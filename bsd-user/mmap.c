@@ -44,10 +44,11 @@ mmap_flags_t2h(int fd, int target_flags)
 	if (target_flags & MAP_FIXED) {
 		host_flags |= host_MAP_FIXED;
 	}
-	if (target_flags & MAP_PRIVATE) {
+	if ((target_flags & (MAP_PRIVATE | MAP_SHARED)) == (MAP_PRIVATE | MAP_SHARED)) {
 		host_flags |= host_MAP_PRIVATE;
-	}
-	if (target_flags & MAP_SHARED) {
+	} else if (target_flags & MAP_PRIVATE) {
+		host_flags |= host_MAP_PRIVATE;
+	} else if (target_flags & MAP_SHARED) {
 		host_flags |= host_MAP_SHARED;
 	}
 	if (target_flags & MAP_ANON) {
@@ -548,6 +549,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
                      int flags, int fd, off_t offset)
 {
     abi_ulong ret, end, real_start, real_end, retaddr, host_offset, host_len;
+    bool commit_in_place = false;
 
     mmap_lock();
     if (qemu_loglevel_mask(CPU_LOG_PAGE)) {
@@ -637,10 +639,26 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
     host_offset = offset & qemu_host_page_mask;
 
     /*
+    * If MAP_FIXED is not set, but a non-zero hint address is specified and it
+    * fully falls within a previously reserved range (PAGE_VALID pages without RWX),
+    * then do not change start via mmap_find_vma: commit in place.
+    */
+    if (!(flags & MAP_FIXED) && start != 0 && guest_range_valid_untagged(start, len)) {
+        commit_in_place = true;
+        for (abi_ulong a = start, last = start + len; a < last; a += TARGET_PAGE_SIZE) {
+            int pf = page_get_flags(a);
+            if ((pf & PAGE_VALID) == 0 || (pf & PAGE_RWX) != 0) {
+                commit_in_place = false;
+                break;
+            }
+        }
+    }
+
+    /*
      * If the user is asking for the kernel to find a location, do that
      * before we truncate the length for mapping files below.
      */
-    if (!(flags & MAP_FIXED)) {
+    if (!(flags & MAP_FIXED) && !commit_in_place) {
         host_len = len + offset - host_offset;
         host_len = HOST_PAGE_ALIGN(host_len);
         if ((flags & MAP_ALIGNMENT_MASK) != 0)
@@ -692,6 +710,47 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int target_prot,
 
         host_len = len + offset - host_offset;
         host_len = HOST_PAGE_ALIGN(host_len);
+
+        /*
+         * If the guest provided a non-zero hint address that lies entirely
+         * within an existing reserved (PROT_NONE) mapping, honor the hint by
+         * performing a fixed mapping at that address. This allows committing
+         * pages inside previously reserved arenas (e.g. Go runtime heaps).
+         */
+        if (start != 0 && guest_range_valid_untagged(start, len)) {
+            bool can_commit_in_place = true;
+            abi_ulong a, last = start + len;
+
+            for (a = start; a < last; a += TARGET_PAGE_SIZE) {
+                int pf = page_get_flags(a);
+                if ((pf & PAGE_VALID) == 0 || (pf & PAGE_RWX) != 0) {
+                    can_commit_in_place = false;
+                    break;
+                }
+            }
+
+            if (can_commit_in_place) {
+                int _flags = flags | ((fd != -1) ? MAP_ANON : 0);
+                p = mmap(g2h_untagged(start), host_len, target_prot,
+                         mmap_flags_t2h(-1, _flags | MAP_FIXED), -1, 0);
+                if (p == MAP_FAILED) {
+                    goto fail;
+                }
+                host_start = (unsigned long)p;
+                if (fd != -1) {
+                    p = mmap(g2h_untagged(start), len, target_prot,
+                             mmap_flags_t2h(fd, flags | MAP_FIXED), fd,
+                             host_offset);
+                    if (p == MAP_FAILED) {
+                        munmap(g2h_untagged(start), host_len);
+                        goto fail;
+                    }
+                    host_start += offset - host_offset;
+                }
+                start = h2g(host_start);
+                goto the_end1;
+            }
+        }
 
 	int _flags = flags | ((fd != -1) ? MAP_ANON : 0);
         /*

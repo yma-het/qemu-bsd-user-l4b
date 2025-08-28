@@ -258,9 +258,27 @@ static abi_long _umtx_wait_uint(uint32_t *addr, uint32_t target_val,
         } while (1);
     } else
 #endif
-    assert(tsz == 0 && t == 0);
-    return get_errno(safe_futex(addr, QEMU_UMTX_OP(UMTX_OP_WAIT_UINT),
-            target_val, 0, 0, 0));
+    {
+        const struct timespec *timeout_ptr = NULL;
+        struct timespec timeout_ts;
+
+        if (t != NULL && tsz != 0) {
+            if (tsz <= sizeof(struct target_freebsd_timespec)) {
+                const struct target_freebsd_timespec *tts = (const struct target_freebsd_timespec *)t;
+                timeout_ts.tv_sec = tts->tv_sec;
+                timeout_ts.tv_nsec = tts->tv_nsec;
+                timeout_ptr = &timeout_ts;
+            } else {
+                const struct target_freebsd__umtx_time *ut = (const struct target_freebsd__umtx_time *)t;
+                timeout_ts.tv_sec = ut->_timeout.tv_sec;
+                timeout_ts.tv_nsec = ut->_timeout.tv_nsec;
+                timeout_ptr = &timeout_ts;
+            }
+        }
+
+        return get_errno(safe_futex(addr, QEMU_UMTX_OP(UMTX_OP_WAIT_UINT),
+                                    target_val, timeout_ptr, NULL, 0));
+    }
 }
 
 abi_long freebsd_umtx_wait_uint(abi_ulong obj, uint32_t target_val,
@@ -306,9 +324,27 @@ static abi_long _umtx_wait_uint_private(uint32_t *addr, uint32_t target_val,
         } while (1);
     }
 #endif /* DETECT_DEADLOCK */
-    assert (t == 0 && tsz == 0); /* "Not implemented yet: open PR!" */
-    return get_errno(safe_futex(addr, QEMU_UMTX_OP(UMTX_OP_WAIT_UINT_PRIVATE),
-			    target_val, NULL, NULL, 0));
+    {
+        const struct timespec *timeout_ptr = NULL;
+        struct timespec timeout_ts;
+
+        if (t != NULL && tsz != 0) {
+            if (tsz <= sizeof(struct target_freebsd_timespec)) {
+                const struct target_freebsd_timespec *tts = (const struct target_freebsd_timespec *)t;
+                timeout_ts.tv_sec = tts->tv_sec;
+                timeout_ts.tv_nsec = tts->tv_nsec;
+                timeout_ptr = &timeout_ts;
+            } else {
+                const struct target_freebsd__umtx_time *ut = (const struct target_freebsd__umtx_time *)t;
+                timeout_ts.tv_sec = ut->_timeout.tv_sec;
+                timeout_ts.tv_nsec = ut->_timeout.tv_nsec;
+                timeout_ptr = &timeout_ts;
+            }
+        }
+
+        return get_errno(safe_futex(addr, QEMU_UMTX_OP(UMTX_OP_WAIT_UINT_PRIVATE),
+					    target_val, timeout_ptr, NULL, 0));
+    }
 }
 
 abi_long freebsd_umtx_wait_uint_private(abi_ulong obj, uint32_t target_val,
@@ -354,8 +390,27 @@ static abi_long _umtx_wait(uint32_t *addr, uint32_t target_val, size_t tsz,
         } while (1);
     } else
 #endif /* DETECT_DEADLOCK */
-    assert (t == 0 && tsz == 0); /* "Not implemented yet: open PR!" */
-    return get_errno(safe_futex(addr, QEMU_UMTX_OP(UMTX_OP_WAIT), target_val, NULL, NULL, 0));
+    {
+        const struct timespec *timeout_ptr = NULL;
+        struct timespec timeout_ts;
+
+        if (t != NULL && tsz != 0) {
+            if (tsz <= sizeof(struct target_freebsd_timespec)) {
+                const struct target_freebsd_timespec *tts = (const struct target_freebsd_timespec *)t;
+                timeout_ts.tv_sec = tts->tv_sec;
+                timeout_ts.tv_nsec = tts->tv_nsec;
+                timeout_ptr = &timeout_ts;
+            } else {
+                const struct target_freebsd__umtx_time *ut = (const struct target_freebsd__umtx_time *)t;
+                timeout_ts.tv_sec = ut->_timeout.tv_sec;
+                timeout_ts.tv_nsec = ut->_timeout.tv_nsec;
+                timeout_ptr = &timeout_ts;
+            }
+        }
+
+        return get_errno(safe_futex(addr, QEMU_UMTX_OP(UMTX_OP_WAIT),
+                                    target_val, timeout_ptr, NULL, 0));
+    }
 }
 
 abi_long freebsd_umtx_wait(abi_ulong targ_addr, abi_ulong target_id, size_t tsz,
