@@ -23,7 +23,7 @@
 #include "gdbstub/helpers.h"
 #include "gdbstub/commands.h"
 #include "tcg/mte_helper.h"
-#if defined(CONFIG_USER_ONLY) && defined(CONFIG_LINUX)
+#if defined(CONFIG_LINUX_USER)
 #include <sys/prctl.h>
 #include "mte_user_helper.h"
 #endif
@@ -404,7 +404,7 @@ int aarch64_gdb_get_tag_ctl_reg(CPUState *cs, GByteArray *buf, int reg)
 
 int aarch64_gdb_set_tag_ctl_reg(CPUState *cs, uint8_t *buf, int reg)
 {
-#if defined(CONFIG_LINUX)
+#if defined(CONFIG_LINUX_USER)
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
 
