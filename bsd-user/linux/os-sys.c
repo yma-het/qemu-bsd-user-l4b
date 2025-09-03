@@ -164,6 +164,14 @@ static abi_ulong h2g_ulong_sat(u_long ul)
 /* For reading target arch */
 #include <libelf.h>
 #include <gelf.h>
+#if defined(__linux__)
+/* libelf on Linux does not define Elf_Note and NT_FREEBSD_ARCH_TAG; add compatibility */
+typedef GElf_Nhdr Elf_Note;
+#ifndef NT_FREEBSD_ARCH_TAG
+/* Value from FreeBSD ELF note for MACHINE_ARCH */
+#define NT_FREEBSD_ARCH_TAG 3
+#endif
+#endif
 
 static int
 get_target_arch(TaskState *ts, char **machine_arch)
@@ -989,7 +997,7 @@ do_sysctl_net_routetable_iflistl(int32_t *snamep, size_t namelen, size_t olen,
             PUT(tifam->ifam_data.ifi_opackets, ifam->ifam_data.ifi_opackets);
             PUT(tifam->ifam_data.ifi_oerrors, ifam->ifam_data.ifi_oerrors);
             PUT(tifam->ifam_data.ifi_collisions, ifam->ifam_data.ifi_collisions);
-            PUT(tifam->ifam_data.ifi_ibytes, ifam->ifam_data.ifi_ibytes);
+            PUT(tifm->ifm_data.ifi_ibytes, ifam->ifam_data.ifi_ibytes);
             PUT(tifam->ifam_data.ifi_obytes, ifam->ifam_data.ifi_obytes);
             PUT(tifam->ifam_data.ifi_imcasts, ifam->ifam_data.ifi_imcasts);
             PUT(tifam->ifam_data.ifi_omcasts, ifam->ifam_data.ifi_omcasts);
@@ -1531,7 +1539,7 @@ static abi_long do_freebsd_sysctl_oid(CPUArchState *env, int32_t *snamep,
             holdlen = sizeof(int32_t);
             ret = 0;
             goto out;
-#if defined(TARGET_ARM)
+#if defined(TARGET_ARM) && defined(HW_FLOATINGPT)
         case HW_FLOATINGPT:
             if (oldlen) {
                 ARMCPU *cpu2 = env_archcpu(env);
